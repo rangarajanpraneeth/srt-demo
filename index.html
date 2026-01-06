@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>SimTelemetry Pro - Professional Analysis Suite</title>
+   <script src="https://cdn.tailwindcss.com"></script>
+   <style>
+      :root {
+         --bg-dark: #020202;
+         --bg-panel: #0a0a0a;
+         --bg-header: #141414;
+         --border: #222222;
+         --accent: #0080ff;
+         --text-dim: #555555;
+         --font-mono: 'JetBrains Mono', 'Fira Code', 'ui-monospace', monospace;
+      }
+
+      * {
+         box-sizing: border-box;
+         font-family: 'Inter', 'Segoe UI', sans-serif;
+         cursor: default;
+      }
+
+      body {
+         background-color: var(--bg-dark);
+         color: #d1d1d1;
+         height: 100vh;
+         margin: 0;
+         overflow: hidden;
+         display: flex;
+         flex-direction: column;
+         font-size: 11px;
+      }
+
+      .font-data {
+         font-family: var(--font-mono);
+         font-variant-numeric: tabular-nums;
+      }
+
+      .tab-active {
+         background-color: var(--bg-panel);
+         border-bottom: 2px solid var(--accent);
+         color: #fff;
+         font-weight: 600;
+      }
+
+      .channel-row:hover {
+         background: #151515;
+      }
+
+      .channel-row.selected {
+         background: #1e293b;
+         border-left: 2px solid var(--accent);
+      }
+
+      .graph-area {
+         background: #050505;
+         position: relative;
+         overflow: hidden;
+         border-bottom: 1px solid var(--border);
+         flex: 1 1 0;
+         min-height: 180px;
+         background-image:
+            linear-gradient(rgba(20, 20, 20, 0.4) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(20, 20, 20, 0.4) 1px, transparent 1px);
+         background-size: 50px 25px;
+      }
+
+      .cursor-line {
+         position: absolute;
+         top: 0;
+         bottom: 0;
+         width: 1px;
+         background: rgba(255, 255, 255, 0.8);
+         pointer-events: none;
+         z-index: 50;
+         box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+      }
+
+      .cursor-label {
+         position: absolute;
+         background: var(--accent);
+         color: white;
+         padding: 3px 8px;
+         font-size: 10px;
+         font-family: var(--font-mono);
+         top: 6px;
+         transform: translateX(-50%);
+         white-space: nowrap;
+         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+         z-index: 60;
+         border-radius: 3px;
+         font-weight: 600;
+      }
+
+      .floating-window {
+         position: absolute;
+         background: var(--bg-panel);
+         border: 1px solid var(--border);
+         box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9);
+         z-index: 100;
+         display: flex;
+         flex-direction: column;
+         border-radius: 6px;
+         overflow: hidden;
+      }
+
+      .window-header {
+         background: var(--bg-header);
+         padding: 10px 16px;
+         font-weight: 700;
+         font-size: 10px;
+         display: flex;
+         /* justify-between; */
+         align-items: center;
+         border-bottom: 1px solid var(--border);
+         text-transform: uppercase;
+         letter-spacing: 1.2px;
+      }
+
+      #context-menu {
+         display: none;
+         position: fixed;
+         z-index: 1000;
+         background: #181818;
+         border: 1px solid #333;
+         min-width: 200px;
+         box-shadow: 12px 12px 35px rgba(0, 0, 0, 0.8);
+         border-radius: 4px;
+         overflow: hidden;
+      }
+
+      .menu-item {
+         padding: 10px 16px;
+         display: flex;
+         /* justify-between; */
+         font-size: 10px;
+         transition: 0.12s;
+         border-bottom: 1px solid #222;
+      }
+
+      .menu-item:last-child {
+         border-bottom: none;
+      }
+
+      .menu-item:hover {
+         background: var(--accent);
+         color: white;
+         cursor: pointer;
+      }
+
+      .tire-diag {
+         background: #0a0a0a;
+         border: 1px solid #2a2a2a;
+         padding: 12px;
+         border-radius: 4px;
+      }
+
+      .temp-strip {
+         display: grid;
+         grid-template-columns: 1fr 1fr 1fr;
+         height: 32px;
+         border: 1px solid #1a1a1a;
+         margin: 8px 0;
+         border-radius: 3px;
+         overflow: hidden;
+      }
+
+      .temp-cell {
+         font-family: var(--font-mono);
+         font-size: 11px;
+         display: flex;
+         align-items: center;
+         justify-content: center;
+         color: white;
+         font-weight: bold;
+      }
+
+      .scrollbar-hide::-webkit-scrollbar {
+         display: none;
+      }
+
+      button:active {
+         transform: scale(0.97);
+      }
+
+      button {
+         transition: all 0.15s;
+      }
+
+      button:hover {
+         filter: brightness(1.2);
+      }
+   </style>
+</head>
+
+<body oncontextmenu="return showContextMenu(event)">
+
+   <header class="flex items-center bg-[#0d0d0d] border-b border-[#222] px-4 h-12 text-[10px] select-none">
+      <div class="flex items-center space-x-7 border-r border-[#222] pr-7 mr-7">
+         <span
+            class="font-bold text-blue-500 hover:text-blue-400 cursor-pointer uppercase tracking-wider">Project</span>
+         <span class="hover:text-white cursor-pointer uppercase tracking-wider"
+            onclick="toggleWindow('diag-window')">Data</span>
+         <span class="hover:text-white cursor-pointer uppercase tracking-wider">Tools</span>
+         <span class="hover:text-white cursor-pointer uppercase tracking-wider">Layout</span>
+         <span
+            class="text-orange-500 font-bold hover:text-orange-400 cursor-pointer uppercase tracking-wider">Math</span>
+      </div>
+      <div class="flex space-x-2">
+         <button onclick="addNewGraph()"
+            class="px-4 h-8 bg-[#1a1a1a] border border-[#333] hover:border-blue-500 rounded text-gray-300">+
+            Channel</button>
+         <button onclick="toggleOverlap()" id="btn-overlap"
+            class="px-4 h-8 bg-[#1a1a1a] border border-[#333] hover:border-blue-500 rounded text-gray-300">Overlay:
+            OFF</button>
+         <button onclick="toggleWindow('xy-plot-modal')"
+            class="px-4 h-8 bg-[#1a1a1a] border border-[#333] hover:border-blue-500 rounded text-gray-300">Scatter</button>
+         <button onclick="exportData()"
+            class="px-4 h-8 bg-[#1a1a1a] border border-[#333] hover:border-green-500 rounded text-gray-300">Export</button>
+      </div>
+      <div class="ml-auto flex items-center space-x-6 text-[9px] text-dim font-data">
+         <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div><span class="text-white">LIVE</span>
+         </div>
+         <span>1000 Hz</span>
+         <span
+            class="bg-blue-900/30 px-3 py-1 rounded text-blue-400 border border-blue-800/50 uppercase tracking-wider text-[8px]">Enterprise</span>
+      </div>
+   </header>
+
+   <nav class="flex bg-[#050505] border-b border-[#222] overflow-x-auto scrollbar-hide">
+      <div
+         class="worksheet-btn px-6 py-3 tab-active cursor-pointer uppercase text-[10px] tracking-widest transition-all"
+         data-ws="driver" onclick="switchWorksheet('driver')">01 Driver</div>
+      <div
+         class="worksheet-btn px-6 py-3 text-gray-500 hover:text-white cursor-pointer uppercase text-[10px] tracking-widest transition-all"
+         data-ws="engine" onclick="switchWorksheet('engine')">02 Powertrain</div>
+      <div
+         class="worksheet-btn px-6 py-3 text-gray-500 hover:text-white cursor-pointer uppercase text-[10px] tracking-widest transition-all"
+         data-ws="tires" onclick="switchWorksheet('tires')">03 Thermal</div>
+      <div
+         class="worksheet-btn px-6 py-3 text-gray-500 hover:text-white cursor-pointer uppercase text-[10px] tracking-widest transition-all"
+         data-ws="chassis" onclick="switchWorksheet('chassis')">04 Chassis</div>
+   </nav>
+
+   <div class="flex-grow flex overflow-hidden relative">
+      <aside class="w-72 flex flex-col bg-[#080808] border-r border-[#222] select-none">
+         <div
+            class="bg-[#121212] p-3 px-4 font-bold flex justify-between items-center text-[9px] border-b border-[#222] uppercase tracking-widest">
+            Channel Explorer
+            <span class="text-blue-500 opacity-70 cursor-pointer hover:opacity-100">+ New</span>
+         </div>
+         <div class="flex-grow overflow-y-auto scrollbar-hide py-1" id="channel-list"></div>
+
+         <div class="bg-[#121212] p-3 px-4 font-bold text-[9px] border-t border-[#222] uppercase tracking-widest">Math
+            Channels</div>
+         <div class="h-40 overflow-y-auto scrollbar-hide p-2 space-y-1">
+            <div class="text-[9px] text-orange-400 opacity-80 italic font-data px-2 hover:opacity-100 cursor-pointer">
+               ƒ(x) G_Force_Combined</div>
+            <div class="text-[9px] text-orange-400 opacity-80 italic font-data px-2 hover:opacity-100 cursor-pointer">
+               ƒ(x) Wheel_Slip_Ratio</div>
+            <div class="text-[9px] text-orange-400 opacity-80 italic font-data px-2 hover:opacity-100 cursor-pointer">
+               ƒ(x) Aero_Balance_Pct</div>
+            <div class="text-[9px] text-orange-400 opacity-80 italic font-data px-2 hover:opacity-100 cursor-pointer">
+               ƒ(x) Brake_Bias</div>
+         </div>
+
+         <div class="bg-[#121212] p-3 px-4 font-bold text-[9px] border-t border-[#222] uppercase tracking-widest">Lap
+            History</div>
+         <div class="h-56 overflow-y-auto scrollbar-hide border-t border-[#222]" id="lap-list"></div>
+      </aside>
+
+      <main class="flex-grow flex flex-col bg-black relative" id="graph-viewport" onmousemove="updateCursor(event)">
+         <div id="global-cursor" class="cursor-line">
+            <div id="cursor-label" class="cursor-label">0.000s</div>
+         </div>
+         <div id="active-graphs" class="flex flex-col flex-grow"></div>
+      </main>
+
+      <aside class="w-80 bg-[#080808] border-l border-[#222] flex flex-col space-y-px">
+         <div class="bg-[#080808] flex flex-col h-[35%]">
+            <div
+               class="bg-[#121212] p-3 px-4 font-bold text-[9px] border-b border-[#222] flex justify-between uppercase tracking-widest">
+               GPS Track Map
+               <span id="txt-pos" class="font-data text-blue-400">0.0m</span>
+            </div>
+            <div class="flex-grow p-5 relative overflow-hidden bg-[#050505]">
+               <svg id="track-map" viewBox="0 0 200 200" class="w-full h-full">
+                  <path id="track-path" d="" fill="none" stroke="#1a1a1a" stroke-width="3" stroke-linecap="round" />
+                  <path id="track-trail" d="" fill="none" stroke="url(#trailGradient)" stroke-width="5"
+                     stroke-linecap="round" opacity="0.9" />
+                  <circle id="track-cursor" cx="0" cy="0" r="6" fill="white" stroke="#3b82f6" stroke-width="3" />
+                  <defs>
+                     <linearGradient id="trailGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#3b82f6" stop-opacity="0" />
+                        <stop offset="100%" stop-color="#3b82f6" stop-opacity="1" />
+                     </linearGradient>
+                  </defs>
+               </svg>
+            </div>
+         </div>
+
+         <div id="context-panel"
+            class="bg-[#080808] flex flex-col h-[65%] border-t border-[#222] overflow-y-auto scrollbar-hide"></div>
+      </aside>
+   </div>
+
+   <div id="diag-window" class="floating-window top-32 left-1/3 w-[480px] hidden">
+      <div class="window-header"><span>Session Diagnostics</span><button onclick="toggleWindow('diag-window')"
+            class="hover:text-red-400 text-[14px]">×</button></div>
+      <div class="p-6 space-y-3 font-data text-[10px]">
+         <div class="flex justify-between border-b border-[#222] pb-2"><span class="text-[#888]">Theoretical Best
+               Lap:</span><span class="text-green-400 font-bold">1:30.841</span></div>
+         <div class="flex justify-between border-b border-[#222] pb-2"><span class="text-[#888]">Session
+               Delta:</span><span class="text-red-400 font-bold">+0.842s</span></div>
+         <div class="flex justify-between border-b border-[#222] pb-2"><span class="text-[#888]">Data
+               Validation:</span><span class="text-blue-400 uppercase font-bold">Pass</span></div>
+         <div class="flex justify-between border-b border-[#222] pb-2"><span class="text-[#888]">Logging
+               Latency:</span><span class="text-white">0.42ms</span></div>
+         <div class="flex justify-between border-b border-[#222] pb-2"><span class="text-[#888]">Sample
+               Rate:</span><span class="text-white">1000 Hz</span></div>
+         <div class="pt-3 text-[8px] text-dim text-center uppercase tracking-[2px]">Build: PRO-2.5.1-ENTERPRISE</div>
+      </div>
+   </div>
+
+   <div id="xy-plot-modal" class="floating-window top-1/4 left-1/4 w-[600px] h-[500px] hidden">
+      <div class="window-header"><span>G-G Diagram - Correlation Analysis</span><button
+            onclick="toggleWindow('xy-plot-modal')" class="hover:text-red-400 text-[14px]">×</button></div>
+      <div class="flex-grow p-8 flex flex-col items-center justify-center bg-[#050505]">
+         <div class="w-full h-full relative">
+            <svg viewBox="0 0 100 100" class="w-full h-full">
+               <circle cx="50" cy="50" r="48" fill="none" stroke="#1a1a1a" stroke-width="0.8" />
+               <circle cx="50" cy="50" r="36" fill="none" stroke="#1a1a1a" stroke-width="0.5" />
+               <circle cx="50" cy="50" r="24" fill="none" stroke="#1a1a1a" stroke-width="0.5" />
+               <circle cx="50" cy="50" r="12" fill="none" stroke="#1a1a1a" stroke-width="0.5" />
+               <line x1="0" y1="50" x2="100" y2="50" stroke="#1a1a1a" stroke-width="1.2" />
+               <line x1="50" y1="0" x2="50" y2="100" stroke="#1a1a1a" stroke-width="1.2" />
+               <text x="52" y="8" font-size="3.5" fill="#666" font-family="monospace">ACCEL</text>
+               <text x="52" y="98" font-size="3.5" fill="#666" font-family="monospace">BRAKE</text>
+               <text x="96" y="52" font-size="3.5" fill="#666" font-family="monospace" text-anchor="end">RIGHT</text>
+               <text x="4" y="52" font-size="3.5" fill="#666" font-family="monospace">LEFT</text>
+               <g id="xy-dots"></g>
+               <circle id="xy-cursor" cx="50" cy="50" r="4" fill="#3b82f6" stroke="white" stroke-width="2" />
+            </svg>
+            <span
+               class="absolute top-1/2 -left-10 -translate-y-1/2 -rotate-90 text-[9px] uppercase tracking-[2px] text-dim font-bold">Longitudinal</span>
+            <span
+               class="absolute bottom-[-20px] left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[2px] text-dim font-bold">Lateral</span>
+         </div>
+      </div>
+   </div>
+
+   <div id="context-menu">
+      <div class="menu-item" onclick="addNewGraph()"><span>Insert Channel...</span><span
+            class="text-dim font-data">I</span></div>
+      <div class="menu-item" onclick="toggleOverlap()"><span>Overlay Comparison</span><span
+            class="text-dim font-data">O</span></div>
+      <div class="menu-item" onclick="exportData()"><span>Export to CSV</span><span class="text-dim font-data">E</span>
+      </div>
+      <div class="menu-item" onclick="toggleWindow('diag-window')"><span>Session Diagnostics</span></div>
+   </div>
+
+   <footer
+      class="h-9 bg-[#0a0a0a] border-t border-[#222] flex items-center px-4 text-[9px] text-dim space-x-10 select-none">
+      <div class="flex items-center space-x-3">
+         <span class="bg-blue-600 px-3 py-1 text-white rounded font-bold text-[8px] tracking-wider">TIME</span>
+         <span id="footer-cursor" class="font-data text-white text-[11px] font-bold">0.000s</span>
+      </div>
+      <div class="flex items-center space-x-6 font-data">
+         <div class="flex space-x-2"><span>S1:</span><span class="text-white">24.114</span></div>
+         <div class="flex space-x-2"><span>S2:</span><span class="text-white">32.251</span></div>
+         <div class="flex space-x-2"><span>S3:</span><span class="text-white">35.412</span></div>
+      </div>
+      <div class="ml-auto flex items-center space-x-5">
+         <span id="notif-bar"
+            class="text-blue-400 font-bold opacity-0 transition-opacity uppercase tracking-wider text-[10px]">Synced</span>
+         <span class="font-data text-[8px] uppercase tracking-[2px] text-[#555]">SIMTELEMETRY PRO V2.5.1
+            ENTERPRISE</span>
+      </div>
+   </footer>
+
+   <script>
+      const POINTS = 2000;
+      let currentIdx = 0;
+      let activeWorksheet = 'driver';
+      let isOverlap = false;
+
+      const gen = (lapSeed) => {
+         const data = {
+            speed: [], rpm: [], thr: [], brk: [], clu: [], gear: [], steer: [],
+            latG: [], lonG: [], fuel: [], path: [], distance: [],
+            waterTemp: [], oilTemp: [], oilPressure: [], fuelPressure: [],
+            batteryVoltage: [], lambda: [], manifoldPressure: []
+         };
+
+         const trackSectors = [
+            { name: 'La Source', type: 'corner', duration: 80, radius: 0.4 },
+            { name: 'Raidillon', type: 'complex', duration: 120, radius: 0.7 },
+            { name: 'Kemmel', type: 'straight', duration: 200, radius: 1.0 },
+            { name: 'Les Combes', type: 'chicane', duration: 90, radius: 0.3 },
+            { name: 'Pouhon', type: 'corner', duration: 110, radius: 0.6 },
+            { name: 'Campus', type: 'complex', duration: 140, radius: 0.5 },
+            { name: 'Stavelot', type: 'corner', duration: 85, radius: 0.5 },
+            { name: 'Blanchimont', type: 'fast', duration: 95, radius: 0.85 },
+            { name: 'Bus Stop', type: 'chicane', duration: 80, radius: 0.25 },
+            { name: 'Final', type: 'straight', duration: 100, radius: 0.9 }
+         ];
+
+         let currentSpeed = 80, currentGear = 2, currentRPM = 7500, distance = 0;
+         let currentSectorIdx = 0, sectorProgress = 0;
+
+         const gearRatios = [0, 2.8, 1.95, 1.45, 1.15, 0.95, 0.82];
+         const finalDrive = 3.2, wheelCircumference = 2.05;
+         const maxRPM = 13200, idleRPM = 2800, shiftRPM = 12800, downshiftRPM = 8500;
+
+         for (let i = 0; i < POINTS; i++) {
+            const sector = trackSectors[currentSectorIdx];
+            sectorProgress++;
+
+            if (sectorProgress >= sector.duration) {
+               sectorProgress = 0;
+               currentSectorIdx = (currentSectorIdx + 1) % trackSectors.length;
+            }
+
+            const sectorPct = sectorProgress / sector.duration;
+            let throttleTarget = 0, brakeTarget = 0;
+
+            if (sector.type === 'straight') {
+               throttleTarget = 100;
+            } else if (sector.type === 'corner') {
+               if (sectorPct < 0.3) {
+                  brakeTarget = 85 + Math.random() * 10;
+               } else if (sectorPct < 0.5) {
+                  brakeTarget = 20 - (sectorPct - 0.3) * 100;
+                  throttleTarget = 15;
+               } else {
+                  throttleTarget = Math.min(100, 30 + (sectorPct - 0.5) * 140);
+               }
+            } else if (sector.type === 'chicane') {
+               const chicanePhase = Math.sin(sectorPct * Math.PI * 4);
+               if (Math.abs(chicanePhase) > 0.6) {
+                  brakeTarget = 60;
+               } else {
+                  throttleTarget = 75;
+               }
+            } else if (sector.type === 'complex') {
+               const phase = sectorPct * 3;
+               if (phase < 0.8) {
+                  brakeTarget = 70;
+               } else if (phase < 1.5) {
+                  throttleTarget = 40;
+               } else {
+                  throttleTarget = Math.min(100, (phase - 1.5) * 60);
+               }
+            } else if (sector.type === 'fast') {
+               throttleTarget = 100;
+               brakeTarget = sectorPct < 0.2 ? 30 : 0;
+            }
+
+            const thr = smoothInput(data.thr[i - 1] || 0, throttleTarget, 8);
+            const brk = smoothInput(data.brk[i - 1] || 0, brakeTarget, 12);
+
+            if (currentRPM > shiftRPM && currentGear < 6 && thr > 80) {
+               currentGear++;
+               currentRPM *= 0.68;
+            } else if (currentRPM < downshiftRPM && currentGear > 1 && thr < 20) {
+               currentGear--;
+               currentRPM *= 1.45;
+            }
+
+            const speedMPS = currentSpeed / 3.6;
+            const wheelRPM = (speedMPS / wheelCircumference) * 60;
+            const engineRPMTarget = wheelRPM * gearRatios[currentGear] * finalDrive;
+
+            if (thr > 50) {
+               currentRPM += (engineRPMTarget - currentRPM) * 0.15 + thr * 12;
+            } else if (brk > 50) {
+               currentRPM -= 180;
+            } else {
+               currentRPM += (engineRPMTarget - currentRPM) * 0.08;
+            }
+
+            currentRPM = Math.max(idleRPM, Math.min(maxRPM, currentRPM));
+
+            const powerFactor = (currentRPM / maxRPM) * (thr / 100);
+            const brakeFactor = (brk / 100) * 8.5;
+            const dragFactor = 0.002 * currentSpeed * currentSpeed;
+
+            currentSpeed += powerFactor * 2.8 - brakeFactor - dragFactor * 0.3;
+            currentSpeed = Math.max(40, Math.min(330, currentSpeed));
+
+            const corneringG = sector.radius * 2.8 * Math.sin(sectorPct * Math.PI);
+            const latG = corneringG * (sector.type === 'chicane' ? Math.sin(sectorPct * Math.PI * 8) : 1);
+            const lonG = (thr - brk) / 28;
+
+            const steerBase = sector.type === 'straight' ? 0 :
+               sector.type === 'chicane' ? 280 * Math.sin(sectorPct * Math.PI * 4) :
+                  -180 * sector.radius * Math.sin(sectorPct * Math.PI);
+            const steer = steerBase + noise(0, 3);
+
+            const engineLoad = (currentRPM / maxRPM) * (thr / 100);
+            const waterTemp = 82 + engineLoad * 22 + noise(0, 0.8);
+            const oilTemp = 95 + engineLoad * 35 + noise(0, 1.2);
+            const oilPress = 4.2 + (currentRPM / 1000) * 0.35 - engineLoad * 0.8 + noise(0, 0.1);
+            const fuelPress = 5.8 + noise(0, 0.15);
+            const batteryV = 13.8 - engineLoad * 0.4 + noise(0, 0.05);
+            const lambdaVal = 0.96 + (thr > 90 ? 0.08 : 0) + noise(0, 0.02);
+            const manifoldP = 1.0 + engineLoad * 1.5 + noise(0, 0.08);
+
+            data.speed.push(currentSpeed);
+            data.rpm.push(currentRPM);
+            data.thr.push(thr);
+            data.brk.push(brk);
+            data.clu.push(i > 0 && data.gear[i - 1] !== currentGear ? 100 : 0);
+            data.gear.push(currentGear);
+            data.steer.push(steer);
+            data.latG.push(latG + noise(0, 0.08));
+            data.lonG.push(lonG + noise(0, 0.06));
+            data.fuel.push(Math.max(2, 48 - (i / POINTS) * 8.2));
+            data.waterTemp.push(waterTemp);
+            data.oilTemp.push(oilTemp);
+            data.oilPressure.push(oilPress);
+            data.fuelPressure.push(fuelPress);
+            data.batteryVoltage.push(batteryV);
+            data.lambda.push(lambdaVal);
+            data.manifoldPressure.push(manifoldP);
+
+            distance += (currentSpeed / 3.6) * 0.05;
+            data.distance.push(distance);
+
+            const pathAngle = (i / POINTS) * Math.PI * 2;
+            const pathR = 75 + 35 * Math.sin(i / 50) + 15 * Math.cos(i / 120) + lapSeed * 3;
+            data.path.push([100 + pathR * Math.cos(pathAngle), 100 + pathR * Math.sin(pathAngle)]);
+         }
+
+         ['FL', 'FR', 'RL', 'RR'].forEach((pos) => {
+            const isLeft = pos.includes('L');
+            data[`tire${pos}`] = {
+               i: Array.from({ length: POINTS }, (_, i) => {
+                  const cornerLoad = Math.abs(data.latG[i]) * (isLeft ? 1.2 : 0.8);
+                  const brakeLoad = data.brk[i] > 50 ? 8 : 0;
+                  return 75 + cornerLoad * 5 + brakeLoad + noise(0, 1.5);
+               }),
+               m: Array.from({ length: POINTS }, (_, i) => {
+                  const cornerLoad = Math.abs(data.latG[i]) * (isLeft ? 1.2 : 0.8);
+                  const brakeLoad = data.brk[i] > 50 ? 12 : 0;
+                  return 78 + cornerLoad * 6 + brakeLoad + noise(0, 1.8);
+               }),
+               o: Array.from({ length: POINTS }, (_, i) => {
+                  const cornerLoad = Math.abs(data.latG[i]) * (isLeft ? 1.2 : 0.8);
+                  const brakeLoad = data.brk[i] > 50 ? 6 : 0;
+                  return 72 + cornerLoad * 4 + brakeLoad + noise(0, 1.5);
+               }),
+               p: Array.from({ length: POINTS }, () => 1.82 + noise(0, 0.02)),
+               w: Array.from({ length: POINTS }, (_, i) => 98.5 - (i / POINTS) * 1.8 + noise(0, 0.3))
+            };
+
+            data[`susp${pos}`] = Array.from({ length: POINTS }, (_, i) => {
+               const roadNoise = noise(0, 8);
+               const cornerComp = data.latG[i] * (isLeft ? 12 : -12);
+               const brakeComp = data.brk[i] > 30 ? (pos.includes('R') ? -8 : 15) : 0;
+               return 45 + cornerComp + brakeComp + roadNoise;
+            });
+         });
+
+         return data;
+      };
+
+      function smoothInput(current, target, rate) {
+         const diff = target - current;
+         return current + Math.max(-rate, Math.min(rate, diff)) + noise(0, 0.5);
+      }
+
+      const noise = (v, f) => v + (Math.random() - 0.5) * f;
+      const telemetry = gen(0);
+      const telemetryRef = gen(2);
+
+      function init() {
+         renderLaps();
+         switchWorksheet('driver');
+         renderTrack();
+         renderXYPlotPoints();
+      }
+
+      function renderTrack() {
+         document.getElementById('track-path').setAttribute('d', telemetry.path.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z');
+      }
+
+      function switchWorksheet(ws) {
+         activeWorksheet = ws;
+         document.querySelectorAll('.worksheet-btn').forEach(btn => btn.classList.toggle('tab-active', btn.dataset.ws === ws));
+
+         const container = document.getElementById('active-graphs');
+         const explorer = document.getElementById('channel-list');
+         const panel = document.getElementById('context-panel');
+         container.innerHTML = '';
+
+         if (ws === 'driver') {
+            container.innerHTML = `
+                    ${createGraph('GPS VELOCITY', 'v-speed', 'km/h', 't-speed', '#3b82f6', 350)}
+                    ${createGraph('ENGINE SPEED', 'v-rpm', 'rpm', 't-rpm', '#facc15', 13200)}
+                    ${createComplexGraph('DRIVER INPUTS (THR / BRK / STEER)', ['t-thr', 't-brk', 't-steer'], ['#22c55e', '#ef4444', '#3b82f6'])}
+                    ${createComplexGraph('G-FORCE ENVELOPE (LAT / LON)', ['t-latg', 't-long'], ['#f97316', '#8b5cf6'], true)}
+                `;
+            explorer.innerHTML = renderChannels(['speed', 'rpm', 'gear', 'thr', 'brk', 'steer', 'latG', 'lonG', 'fuel']);
+            panel.innerHTML = `
+                    <div class="p-3 bg-[#121212] font-bold text-[9px] border-b border-[#222] uppercase tracking-widest">G-G Diagram - Real-Time</div>
+                    <div class="h-72 flex items-center justify-center p-6 bg-[#020202] m-3 rounded border border-[#222]">
+                        <svg viewBox="0 0 100 100" class="w-full h-full">
+                            <circle cx="50" cy="50" r="48" fill="none" stroke="#1a1a1a" stroke-width="0.8"/>
+                            <circle cx="50" cy="50" r="36" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+                            <circle cx="50" cy="50" r="24" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+                            <circle cx="50" cy="50" r="12" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+                            <line x1="0" y1="50" x2="100" y2="50" stroke="#1a1a1a" stroke-width="1"/>
+                            <line x1="50" y1="0" x2="50" y2="100" stroke="#1a1a1a" stroke-width="1"/>
+                            <text x="52" y="8" font-size="4" fill="#666" font-family="monospace">+4G</text>
+                            <text x="52" y="98" font-size="4" fill="#666" font-family="monospace">-4G</text>
+                            <text x="96" y="52" font-size="4" fill="#666" font-family="monospace" text-anchor="end">+4G</text>
+                            <text x="4" y="52" font-size="4" fill="#666" font-family="monospace">-4G</text>
+                            <circle id="gg-ball" cx="50" cy="50" r="3" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="px-4 pb-3 space-y-1">
+                        <div class="flex justify-between text-[9px] font-data"><span class="text-[#666]">Peak Lateral:</span><span class="text-white">3.82G</span></div>
+                        <div class="flex justify-between text-[9px] font-data"><span class="text-[#666]">Peak Longitudinal:</span><span class="text-white">4.21G</span></div>
+                        <div class="flex justify-between text-[9px] font-data"><span class="text-[#666]">Combined Peak:</span><span class="text-green-400">5.14G</span></div>
+                    </div>
+                `;
+         } else if (ws === 'engine') {
+            container.innerHTML = `
+                    ${createGraph('ENGINE SPEED', 'v-rpm', 'rpm', 't-rpm', '#facc15', 13200)}
+                    ${createGraph('COOLANT TEMPERATURE', 'v-water', '°C', 't-water', '#3b82f6', 120)}
+                    ${createGraph('OIL TEMPERATURE', 'v-oil', '°C', 't-oil', '#f97316', 150)}
+                    ${createGraph('OIL PRESSURE', 'v-oilp', 'bar', 't-oilp', '#22c55e', 8)}
+                    ${createGraph('FUEL REMAINING', 'v-fuel', 'L', 't-fuel', '#8b5cf6', 50)}
+                `;
+            explorer.innerHTML = renderChannels(['rpm', 'gear', 'fuel', 'waterTemp', 'oilTemp', 'oilPressure', 'batteryVoltage']);
+            panel.innerHTML = `
+                    <div class="p-3 bg-[#121212] font-bold text-[9px] border-b border-[#222] uppercase tracking-widest">Powertrain Health Monitor</div>
+                    <div class="p-4 space-y-3 text-[10px] font-data">
+                        <div class="flex justify-between pb-2 border-b border-[#1a1a1a]">
+                            <span class="text-[#888]">Battery Voltage:</span>
+                            <span id="v-battery" class="text-green-400">13.8V</span>
+                        </div>
+                        <div class="flex justify-between pb-2 border-b border-[#1a1a1a]">
+                            <span class="text-[#888]">Lambda (AFR):</span>
+                            <span class="text-blue-400">0.98λ</span>
+                        </div>
+                        <div class="flex justify-between pb-2 border-b border-[#1a1a1a]">
+                            <span class="text-[#888]">Manifold Pressure:</span>
+                            <span class="text-yellow-400">1.85bar</span>
+                        </div>
+                        <div class="flex justify-between pb-2 border-b border-[#1a1a1a]">
+                            <span class="text-[#888]">Ignition Timing:</span>
+                            <span class="text-white">18.5°</span>
+                        </div>
+                        <div class="flex justify-between pb-2 border-b border-[#1a1a1a]">
+                            <span class="text-[#888]">Throttle Position:</span>
+                            <span id="v-thr" class="text-white">0.0%</span>
+                        </div>
+                    </div>
+                    <div class="mt-4 mx-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-center">
+                        <div class="text-green-400 font-bold text-[9px] uppercase tracking-widest">All Systems Nominal</div>
+                    </div>
+                `;
+         } else if (ws === 'tires') {
+            container.innerHTML = `
+                    ${createGraph('FRONT LEFT TEMP (MIDDLE)', 'v-tfl', '°C', 't-tfl', '#ef4444', 130)}
+                    ${createGraph('FRONT RIGHT TEMP (MIDDLE)', 'v-tfr', '°C', 't-tfr', '#ef4444', 130)}
+                    ${createGraph('REAR LEFT TEMP (MIDDLE)', 'v-trl', '°C', 't-trl', '#f97316', 130)}
+                    ${createGraph('REAR RIGHT TEMP (MIDDLE)', 'v-trr', '°C', 't-trr', '#f97316', 130)}
+                `;
+            explorer.innerHTML = renderChannels(['tireFL', 'tireFR', 'tireRL', 'tireRR']);
+            panel.innerHTML = `
+                    <div class="p-3 bg-[#121212] font-bold text-[9px] border-b border-[#222] uppercase tracking-widest">Tire Thermal Management</div>
+                    <div class="p-4 grid grid-cols-2 gap-3">${['FL', 'FR', 'RL', 'RR'].map(id => createTireDiag(id)).join('')}</div>
+                    <div class="px-4 pt-2 pb-4">
+                        <div class="text-[8px] text-[#666] uppercase tracking-widest mb-2">Temperature Distribution</div>
+                        <div class="flex items-center space-x-2 text-[8px]">
+                            <div class="w-16 h-3 rounded" style="background: linear-gradient(to right, #3b82f6, #fbbf24, #ef4444)"></div>
+                            <span class="text-[#888]">60°C</span>
+                            <span class="text-[#888]">→</span>
+                            <span class="text-[#888]">130°C</span>
+                        </div>
+                    </div>
+                `;
+         } else if (ws === 'chassis') {
+            container.innerHTML = `
+                    ${createComplexGraph('DAMPER TRAVEL - FRONT (FL / FR)', ['t-sfl', 't-sfr'], ['#3b82f6', '#22c55e'], true)}
+                    ${createComplexGraph('DAMPER TRAVEL - REAR (RL / RR)', ['t-srl', 't-srr'], ['#f97316', '#8b5cf6'], true)}
+                    ${createComplexGraph('RIDE HEIGHT VARIANCE', ['t-rh-front', 't-rh-rear'], ['#facc15', '#ef4444'])}
+                `;
+            explorer.innerHTML = renderChannels(['suspFL', 'suspFR', 'suspRL', 'suspRR']);
+            panel.innerHTML = `
+                    <div class="p-3 bg-[#121212] font-bold text-[9px] border-b border-[#222] uppercase tracking-widest">Suspension Analytics</div>
+                    <div class="p-4 space-y-4">
+                        <div>
+                            <div class="text-[8px] text-[#666] uppercase tracking-widest mb-2">Front Axle Histogram</div>
+                            <div class="flex items-end space-x-1 h-20 bg-[#050505] p-2 border border-[#1a1a1a] rounded">
+                                ${Array.from({ length: 30 }).map(() => `<div class="flex-1 bg-blue-500/60 rounded-t" style="height: ${20 + Math.random() * 80}%"></div>`).join('')}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-[8px] text-[#666] uppercase tracking-widest mb-2">Rear Axle Histogram</div>
+                            <div class="flex items-end space-x-1 h-20 bg-[#050505] p-2 border border-[#1a1a1a] rounded">
+                                ${Array.from({ length: 30 }).map(() => `<div class="flex-1 bg-orange-500/60 rounded-t" style="height: ${20 + Math.random() * 80}%"></div>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+         }
+         refreshGraphs();
+      }
+
+      function refreshGraphs() {
+         const data = isOverlap ? telemetryRef : telemetry;
+         if (activeWorksheet === 'driver') {
+            drawTrace('t-speed', data.speed, 350);
+            drawTrace('t-rpm', data.rpm, 13200);
+            drawTrace('t-thr', data.thr, 100);
+            drawTrace('t-brk', data.brk, 100);
+            drawTrace('t-steer', data.steer, 360, true);
+            drawTrace('t-latg', data.latG, 4, true);
+            drawTrace('t-long', data.lonG, 4, true);
+         } else if (activeWorksheet === 'engine') {
+            drawTrace('t-rpm', data.rpm, 13200);
+            drawTrace('t-water', data.waterTemp, 120);
+            drawTrace('t-oil', data.oilTemp, 150);
+            drawTrace('t-oilp', data.oilPressure, 8);
+            drawTrace('t-fuel', data.fuel, 50);
+         } else if (activeWorksheet === 'tires') {
+            drawTrace('t-tfl', data.tireFL.m, 130);
+            drawTrace('t-tfr', data.tireFR.m, 130);
+            drawTrace('t-trl', data.tireRL.m, 130);
+            drawTrace('t-trr', data.tireRR.m, 130);
+         } else if (activeWorksheet === 'chassis') {
+            drawTrace('t-sfl', data.suspFL, 100, true);
+            drawTrace('t-sfr', data.suspFR, 100, true);
+            drawTrace('t-srl', data.suspRL, 100, true);
+            drawTrace('t-srr', data.suspRR, 100, true);
+            drawTrace('t-rh-front', data.suspFL.map((v, i) => Math.abs(v + data.suspFR[i]) / 2), 60);
+            drawTrace('t-rh-rear', data.suspRL.map((v, i) => Math.abs(v + data.suspRR[i]) / 2), 60);
+         }
+      }
+
+      function updateCursor(e) {
+         const rect = document.getElementById('graph-viewport').getBoundingClientRect();
+         const pct = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+         currentIdx = Math.floor(pct * (POINTS - 1));
+
+         document.getElementById('global-cursor').style.left = `${e.clientX - rect.left}px`;
+         const time = (pct * 100.123).toFixed(3);
+         document.getElementById('cursor-label').innerText = `${time}s`;
+         document.getElementById('footer-cursor').innerText = `${time}s`;
+
+         updateValues(currentIdx, pct);
+      }
+
+      function updateValues(idx, pct) {
+         const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+
+         set('v-speed', telemetry.speed[idx].toFixed(1));
+         set('v-rpm', Math.floor(telemetry.rpm[idx]));
+         set('v-gear', telemetry.gear[idx]);
+         set('v-thr', telemetry.thr[idx].toFixed(1));
+         set('v-brk', telemetry.brk[idx].toFixed(1));
+         set('v-steer', telemetry.steer[idx].toFixed(1));
+         set('v-fuel', telemetry.fuel[idx].toFixed(2));
+         set('v-oil', telemetry.oilTemp[idx].toFixed(1));
+         set('v-water', telemetry.waterTemp[idx].toFixed(1));
+         set('v-oilp', telemetry.oilPressure[idx].toFixed(2));
+         set('v-battery', telemetry.batteryVoltage[idx].toFixed(2));
+         set('v-tfl', telemetry.tireFL.m[idx].toFixed(1));
+         set('v-tfr', telemetry.tireFR.m[idx].toFixed(1));
+         set('v-trl', telemetry.tireRL.m[idx].toFixed(1));
+         set('v-trr', telemetry.tireRR.m[idx].toFixed(1));
+
+         set('side-speed', telemetry.speed[idx].toFixed(1));
+         set('side-rpm', Math.floor(telemetry.rpm[idx]));
+         set('side-gear', telemetry.gear[idx]);
+         set('side-thr', telemetry.thr[idx].toFixed(1));
+         set('side-brk', telemetry.brk[idx].toFixed(1));
+         set('side-steer', telemetry.steer[idx].toFixed(1));
+         set('side-latG', telemetry.latG[idx].toFixed(2));
+         set('side-lonG', telemetry.lonG[idx].toFixed(2));
+         set('side-fuel', telemetry.fuel[idx].toFixed(2));
+         set('side-tireFL', telemetry.tireFL.m[idx].toFixed(1));
+         set('side-tireFR', telemetry.tireFR.m[idx].toFixed(1));
+         set('side-tireRL', telemetry.tireRL.m[idx].toFixed(1));
+         set('side-tireRR', telemetry.tireRR.m[idx].toFixed(1));
+         set('side-waterTemp', telemetry.waterTemp[idx].toFixed(1));
+         set('side-oilTemp', telemetry.oilTemp[idx].toFixed(1));
+         set('side-oilPressure', telemetry.oilPressure[idx].toFixed(2));
+         set('side-batteryVoltage', telemetry.batteryVoltage[idx].toFixed(2));
+         set('side-suspFL', telemetry.suspFL[idx].toFixed(1));
+         set('side-suspFR', telemetry.suspFR[idx].toFixed(1));
+         set('side-suspRL', telemetry.suspRL[idx].toFixed(1));
+         set('side-suspRR', telemetry.suspRR[idx].toFixed(1));
+
+         set('txt-pos', telemetry.distance[idx].toFixed(1) + 'm');
+
+         if (activeWorksheet === 'driver') {
+            const gg = document.getElementById('gg-ball');
+            if (gg) {
+               gg.setAttribute('cx', 50 + (telemetry.latG[idx] * 10));
+               gg.setAttribute('cy', 50 - (telemetry.lonG[idx] * 10));
+            }
+         } else if (activeWorksheet === 'tires') {
+            ['FL', 'FR', 'RL', 'RR'].forEach(p => {
+               const data = telemetry[`tire${p}`];
+               ['i', 'm', 'o'].forEach(pos => {
+                  const t = data[pos][idx];
+                  const cell = document.getElementById(`temp-${p.toLowerCase()}-${pos}`);
+                  if (cell) {
+                     cell.innerText = Math.floor(t) + '°';
+                     const hue = Math.max(0, Math.min(100, 100 - (t - 60)));
+                     cell.style.backgroundColor = `hsl(${hue * 2.4}, 80%, 45%)`;
+                  }
+               });
+               const pressCell = document.getElementById(`press-${p.toLowerCase()}`);
+               const wearCell = document.getElementById(`wear-${p.toLowerCase()}`);
+               if (pressCell) pressCell.innerText = data.p[idx].toFixed(2) + 'bar';
+               if (wearCell) wearCell.innerText = data.w[idx].toFixed(1) + '%';
+            });
+         }
+
+         const trailSize = 120;
+         const start = Math.max(0, idx - trailSize);
+         document.getElementById('track-trail').setAttribute('d', telemetry.path.slice(start, idx + 1).map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' '));
+         const p = telemetry.path[idx];
+         document.getElementById('track-cursor').setAttribute('cx', p[0]);
+         document.getElementById('track-cursor').setAttribute('cy', p[1]);
+         document.getElementById('xy-cursor').setAttribute('cx', 50 + (telemetry.latG[idx] * 10));
+         document.getElementById('xy-cursor').setAttribute('cy', 50 - (telemetry.lonG[idx] * 10));
+      }
+
+      function createGraph(label, valId, unit, traceId, color, scale, centered = false) {
+         return `
+            <section class="graph-area relative" style="min-height: 180px;">
+                <div class="absolute top-2 left-3 text-[#666] font-data text-[9px] z-20 uppercase tracking-widest select-none pointer-events-none">
+                    ${label}
+                </div>
+                <div class="absolute top-2 right-3 text-white font-data text-[13px] z-20 select-none pointer-events-none">
+                    <span id="${valId}">0.0</span> <span class="text-[9px] text-[#888]">${unit}</span>
+                </div>
+                ${centered ? '<div class="absolute top-1/2 w-full border-t border-[#1a1a1a] pointer-events-none z-10"></div>' : ''}
+                <div class="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col items-end space-y-3 text-[8px] text-[#444] font-data pointer-events-none z-10 select-none">
+                    <span>${scale}</span>
+                    <span>${Math.floor(scale * 0.75)}</span>
+                    <span>${Math.floor(scale * 0.5)}</span>
+                    <span>${Math.floor(scale * 0.25)}</span>
+                    <span>0</span>
+                </div>
+                <svg class="w-full h-full absolute inset-0" preserveAspectRatio="none" style="overflow: visible;">
+                    <polyline id="${traceId}" points="" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                </svg>
+            </section>`;
+      }
+
+      function createComplexGraph(label, ids, colors, centered = false) {
+         return `
+            <section class="graph-area relative" style="min-height: 200px;">
+                <div class="absolute top-2 left-3 text-[#666] font-data text-[9px] z-20 uppercase tracking-widest select-none pointer-events-none">${label}</div>
+                <div class="absolute top-2 right-3 flex space-x-4 z-20 select-none pointer-events-none">
+                    ${ids.map((id, i) => `<div class="flex items-center space-x-1"><div class="w-3 h-1 rounded-full" style="background: ${colors[i]}"></div><span class="text-[8px] text-[#888]">${id.replace('t-', '').toUpperCase()}</span></div>`).join('')}
+                </div>
+                ${centered ? '<div class="absolute top-1/2 w-full border-t border-[#1a1a1a] pointer-events-none z-10"></div>' : ''}
+                <svg class="w-full h-full absolute inset-0" preserveAspectRatio="none" style="overflow: visible;">
+                    ${ids.map((id, i) => `<polyline id="${id}" points="" fill="none" stroke="${colors[i]}" stroke-width="1.3" vector-effect="non-scaling-stroke" />`).join('')}
+                </svg>
+            </section>`;
+      }
+
+      function createTireDiag(id) {
+         const side = id.toLowerCase();
+         return `
+            <div class="tire-diag">
+                <div class="text-[9px] font-bold text-white uppercase tracking-tighter mb-2">${id}</div>
+                <div class="temp-strip">
+                    <div class="temp-cell text-[10px]" id="temp-${side}-i">--</div>
+                    <div class="temp-cell border-l border-r border-[#1a1a1a] text-[10px]" id="temp-${side}-m">--</div>
+                    <div class="temp-cell text-[10px]" id="temp-${side}-o">--</div>
+                </div>
+                <div class="flex justify-between text-[8px] font-data text-[#666] uppercase mt-2">
+                    <span id="press-${side}">1.82b</span>
+                    <span id="wear-${side}">98.5%</span>
+                </div>
+            </div>`;
+      }
+
+      function renderChannels(keys) {
+         return keys.map(k => `
+            <div class="channel-row flex justify-between p-2 px-4 border-b border-[#111] text-[9px] cursor-pointer hover:bg-[#151515] transition-colors">
+                <span class="text-dim uppercase tracking-tighter">${k}</span>
+                <span class="text-white font-data" id="side-${k}">0.0</span>
+            </div>`).join('');
+      }
+
+      function renderLaps() {
+         const data = [
+            { id: 1, t: "1:32.422", d: "+0.42", s1: "24.114", s2: "32.251", s3: "35.412" },
+            { id: 2, t: "1:32.112", d: "0.00", s1: "24.082", s2: "32.103", s3: "35.351", a: true },
+            { id: 3, t: "1:32.902", d: "+0.79", s1: "24.251", s2: "32.412", s3: "35.622" }
+         ];
+         document.getElementById('lap-list').innerHTML = data.map(l => `
+            <div class="p-3 border-b border-[#111] flex justify-between cursor-pointer hover:bg-[#0f0f0f] transition-colors ${l.a ? 'bg-[#1e293b]/30' : ''}">
+                <div class="flex flex-col">
+                    <span class="font-bold text-[10px]">Lap ${l.id}</span>
+                    <span class="text-[7px] text-dim font-data">S1: ${l.s1}</span>
+                </div>
+                <div class="text-right flex flex-col">
+                    <span class="text-white font-data text-[10px]">${l.t}</span>
+                    <span class="${l.a ? 'text-green-400' : 'text-red-400'} font-data text-[8px]">${l.d}</span>
+                </div>
+            </div>`).join('');
+      }
+
+      function drawTrace(id, data, scale, centered = false) {
+         const el = document.getElementById(id);
+         if (!el) return;
+
+         const svg = el.closest('svg');
+         const rect = svg.getBoundingClientRect();
+         const width = rect.width;
+         const height = rect.height;
+
+         const points = data.map((v, i) => {
+            const x = (i / POINTS) * width;
+            const y = centered ?
+               (height / 2) - ((v / scale) * (height / 2)) :
+               height - ((v / scale) * height);
+            return `${x},${Math.max(0, Math.min(height, y))}`;
+         }).join(' ');
+
+         el.setAttribute('points', points);
+         el.setAttribute('vector-effect', 'non-scaling-stroke');
+      }
+
+      function renderXYPlotPoints() {
+         const group = document.getElementById('xy-dots');
+         if (!group) return;
+         const points = [];
+         for (let i = 0; i < POINTS; i += 8) {
+            const lat = telemetry.latG[i];
+            const lon = telemetry.lonG[i];
+            points.push(`<circle cx="${50 + lat * 10}" cy="${50 - lon * 10}" r="0.4" fill="#3b82f6" opacity="0.3" />`);
+         }
+         group.innerHTML = points.join('');
+      }
+
+      function addNewGraph() { switchWorksheet(activeWorksheet); notify('Channel Updated'); }
+      function toggleOverlap() {
+         isOverlap = !isOverlap;
+         document.getElementById('btn-overlap').innerText = `Overlay: ${isOverlap ? 'ON' : 'OFF'}`;
+         refreshGraphs();
+         notify(`Reference Lap ${isOverlap ? 'ON' : 'OFF'}`);
+      }
+      function toggleWindow(id) { document.getElementById(id).classList.toggle('hidden'); }
+      function notify(msg) {
+         const bar = document.getElementById('notif-bar');
+         bar.innerText = msg;
+         bar.style.opacity = '1';
+         setTimeout(() => bar.style.opacity = '0', 2500);
+      }
+      function exportData() {
+         notify('Export Started...');
+         setTimeout(() => notify('Data Exported Successfully'), 1000);
+      }
+      function showContextMenu(e) {
+         e.preventDefault();
+         const menu = document.getElementById('context-menu');
+         menu.style.display = 'block';
+         menu.style.left = e.pageX + 'px';
+         menu.style.top = e.pageY + 'px';
+         return false;
+      }
+      window.onclick = () => { document.getElementById('context-menu').style.display = 'none'; };
+
+      window.onload = init;
+   </script>
+</body>
+
+</html>
